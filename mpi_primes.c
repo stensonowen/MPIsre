@@ -1,3 +1,10 @@
+// mpicc mpi_primes.c -Wall -Wextra -lm
+// timeout -s 10 10s mpiexec -n 4 a.out
+// Isn't it great when lines just align
+// The benefit of a monospaced typeface
+// is the illusion of order it gives me
+// For six lines, the world makes sense
+
 #include <mpi.h>
 #include <math.h>
 #include <stdio.h>
@@ -13,15 +20,14 @@ typedef struct {
 } range;
 
 void sig_handler(int signo) {
-    printf("<Signal received>\n");
     if (signo == SIGUSR1) {
         end_now = 1;
     }
 }
 
 int is_prime(uint32_t n) {
-    uint32_t i;
-    uint32_t sr = (uint32_t)sqrt((double)n) + 1;
+    // NOTE: it's not that efficient to run this repeatedly
+    uint32_t i, sr = (uint32_t)sqrt((double)n)+1;
     for(i=2; i<sr; ++i) {
         if(n % i == 0) {
             return 0;
@@ -35,7 +41,7 @@ range next_local_tasks(range global, int id, int count) {
     uint32_t tasks = (global.upper - global.lower) / count;
     new_local_tasks.lower = global.lower + tasks * id;
     new_local_tasks.upper = new_local_tasks.lower + tasks;
-    // TODO: off by one at the end?
+    // TODO: chance of off by one at the end?
     return new_local_tasks;
 }
 
@@ -64,12 +70,11 @@ int main(int argc, char **argv) {
 
     signal(SIGUSR1, sig_handler);
 
-    //if(id == 0) {
-    //    printf("\t\tN\t\tPrimes\n");
-    //}
+    if(id == 0) {
+        printf("\t\tN\t\tPrimes\n");
+    }
 
     // proc 0 sends signal to begin
-    //  MPI_Barrier
     // each thread computes its numbers to test and checks each
     //  if end_now is tripped, they return early
     // once they exhaust their numbers, they percolate that into to proc 0
@@ -78,34 +83,49 @@ int main(int argc, char **argv) {
     
     // this means a fair amount of downtime because the last thread will have more work
     //  and every other thread will be waiting on it
-    //  this can be tweaked with 
-    int x = 0;
-
+    
+    // also note this is a pretty naive way of finding primes
+    // a sieve approach owuld mean much less work and better order notation
+    // but who cares
+    
     while (1) {
-        if (end_now == 1 || x++ > 6) {
-            break;
-        }
-
+        // each thread computes which numbers to check (e.g. 100-125)
         local = next_local_tasks(global, id, count);
-        //printf("Thread %d computing primes from %d to %d\n", id, local.lower, local.upper);
 
         for(i=local.lower; i<local.upper; ++i) {
+            // check if each of my numbers is prime
             local_num_primes += is_prime(i);
+
+            if (end_now == 1) { // TODO: handle interrupt properly? 
+                // spec pretty ambiguous, so can probably just do nothing
+                // need to print output one last time though
+                // maybe need some tweaking to get this to make sense
+                if(id == 0) {
+                    printf("<Signal received>\n");
+                    //printf("\t\t%d\t\t%d\n", i, global_num_primes);
+                }
+                break;
+            }
         }
         
+        // communicate local counts to thread 0
         MPI_Reduce(&local_num_primes, &global_num_primes, 1, MPI_UNSIGNED, 
                 MPI_SUM, 0, MPI_COMM_WORLD);
 
         if(id == 0) {
-            printf("Percolated to id 0! The total num of primes is %d\n", global_num_primes);
-            //global = next_global_range(global);
+            printf("\t\t%d\t\t%d\n", global.upper, global_num_primes);
         }
+
+        // start on the next range of numbers (e.g. 1000-10000)
         global = next_global_range(global);
 
-        MPI_Barrier(MPI_COMM_WORLD);
+        // sync threads
+        // I don't think this is actually necessary
+        // because it's already being done by MPI_Reduce
+        // and thread 0 doesn't need to communicate with the others
+        //MPI_Barrier(MPI_COMM_WORLD);
     }
 
     MPI_Finalize();
-
     return 0;
 }
