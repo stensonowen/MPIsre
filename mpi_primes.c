@@ -5,16 +5,12 @@
 #include <signal.h>
 #include <unistd.h>
 
-int32_t end_now = 0;
+int end_now = 0;
 
 typedef struct {
     uint32_t lower;
     uint32_t upper;
 } range;
-
-range global = { 2, 10 };
-//uint32_t global_lower = 2;
-//uint32_t global_upper = 10;
 
 void sig_handler(int signo) {
     printf("<Signal received>\n");
@@ -56,8 +52,9 @@ range next_global_range(range old) {
 
 int main(int argc, char **argv) {
     int count, id;
+    range global = { 2, 10 };
     range local = global;
-    uint32_t tmp, i; 
+    uint32_t i; 
     uint32_t local_num_primes = 0;
     uint32_t global_num_primes = 0;
 
@@ -67,9 +64,9 @@ int main(int argc, char **argv) {
 
     signal(SIGUSR1, sig_handler);
 
-    if(id == 0) {
-        printf("\t\tN\t\tPrimes\n");
-    }
+    //if(id == 0) {
+    //    printf("\t\tN\t\tPrimes\n");
+    //}
 
     // proc 0 sends signal to begin
     //  MPI_Barrier
@@ -82,13 +79,15 @@ int main(int argc, char **argv) {
     // this means a fair amount of downtime because the last thread will have more work
     //  and every other thread will be waiting on it
     //  this can be tweaked with 
+    int x = 0;
 
     while (1) {
-        if (end_now == 1) {
+        if (end_now == 1 || x++ > 6) {
             break;
         }
 
         local = next_local_tasks(global, id, count);
+        //printf("Thread %d computing primes from %d to %d\n", id, local.lower, local.upper);
 
         for(i=local.lower; i<local.upper; ++i) {
             local_num_primes += is_prime(i);
@@ -99,13 +98,11 @@ int main(int argc, char **argv) {
 
         if(id == 0) {
             printf("Percolated to id 0! The total num of primes is %d\n", global_num_primes);
-            global = next_global_range(global);
+            //global = next_global_range(global);
         }
+        global = next_global_range(global);
 
         MPI_Barrier(MPI_COMM_WORLD);
-        //if(local_lower == local_upper) {
-        //    local_upper *= 10;
-        //}
     }
 
     MPI_Finalize();
