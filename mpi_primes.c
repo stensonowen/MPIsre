@@ -29,8 +29,9 @@ void sig_handler(int signo) {
 int is_prime(uint32_t n) {
     // NOTE: it's not that efficient to run this repeatedly
     // can speed up by not checking multiples of 2
+    if (n == 2 || n == 3 || n == 5 || n == 7) return 1;
     uint32_t i, sr = (uint32_t)sqrt((double)n) + 1;
-    for (i = 2; i < sr; ++i) {
+    for (i = 2; i < sr; i++) {
         if ((n % i) == 0) {
             return 0;
         }
@@ -42,7 +43,14 @@ range next_local_tasks(range global, int id, int count) {
     range new_local_tasks;
     uint32_t tasks = (global.upper - global.lower) / count;
     new_local_tasks.lower = global.lower + tasks * id;
-    new_local_tasks.upper = new_local_tasks.lower + tasks;
+    if(id == count - 1) {
+        // give a little extra work to the final proc
+        // if the number of primes to check is not a multiple
+        // of the number of threads
+        new_local_tasks.upper = global.upper;
+    } else {
+        new_local_tasks.upper = new_local_tasks.lower + tasks;
+    }
     return new_local_tasks;
 }
 
@@ -126,7 +134,6 @@ int main(int argc, char **argv) {
         global_old_primes += global_num_primes;
 		// this bound is broken. Need to determine where the last time we were sure we broke 
         if (id == 0) {
-            //printf("\t\t%d\t\t%d\n", local.lower, global_old_primes);
             printf("\t\t%d\t\t%d\n", global.upper, global_old_primes);
         }
 
