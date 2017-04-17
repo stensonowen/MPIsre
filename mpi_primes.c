@@ -28,6 +28,7 @@ void sig_handler(int signo) {
 
 int is_prime(uint32_t n) {
     // NOTE: it's not that efficient to run this repeatedly
+    // can speed up by not checking multiples of 2
     uint32_t i, sr = (uint32_t)sqrt((double)n) + 1;
     for (i = 2; i < sr; ++i) {
         if ((n % i) == 0) {
@@ -42,7 +43,6 @@ range next_local_tasks(range global, int id, int count) {
     uint32_t tasks = (global.upper - global.lower) / count;
     new_local_tasks.lower = global.lower + tasks * id;
     new_local_tasks.upper = new_local_tasks.lower + tasks;
-    // TODO: chance of off by one at the end?
     return new_local_tasks;
 }
 
@@ -63,8 +63,12 @@ int main(int argc, char **argv) {
     range global = { 2, 10 };
     range local = global;
     uint32_t i;
+    // keep track of the number of primes found by this thread
     uint32_t local_num_primes = 0;
+    // track total primes found by all threads within `global` range
     uint32_t global_num_primes = 0;
+    // track total primes found by all threads before `global` range
+    uint32_t global_old_primes = 0;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &count);
@@ -93,18 +97,16 @@ int main(int argc, char **argv) {
     while (1) {
         // each thread computes which numbers to check (e.g. 100-125)
         local = next_local_tasks(global, id, count);
+        local_num_primes = 0;
+        global_num_primes = 0;
 
         for(i = local.lower; i < local.upper; ++i) {
             // check if each of my numbers is prime
             local_num_primes += is_prime(i);
 
-            if (end_now == 1) { // TODO: handle interrupt properly? 
-                // spec pretty ambiguous, so can probably just do nothing
-                // need to print output one last time though
-                // maybe need some tweaking to get this to make sense
+            if (end_now == 1) {
                 if (id == 0) {
-					printf("<Signal received>\n");
-                    //printf("\t\t%d\t\t%d\n", i, global_num_primes);
+                    printf("<Signal received>\n");
                 }
                 break;
             }
@@ -114,19 +116,22 @@ int main(int argc, char **argv) {
         MPI_Reduce(&local_num_primes, &global_num_primes, 1, MPI_UNSIGNED, 
                 MPI_SUM, 0, MPI_COMM_WORLD);
 
+        if(end_now == 1) {
+            if(id == 0) {
+                printf("\t\t%d\t\t%d\n", i, global_old_primes + local_num_primes);
+            }
+            break;
+        }
+
+        global_old_primes += global_num_primes;
 		// this bound is broken. Need to determine where the last time we were sure we broke 
         if (id == 0) {
-            printf("\t\t%d\t\t%d\n", local.lower, global_num_primes);
+            //printf("\t\t%d\t\t%d\n", local.lower, global_old_primes);
+            printf("\t\t%d\t\t%d\n", global.upper, global_old_primes);
         }
 
         // start on the next range of numbers (e.g. 1000-10000)
         global = next_global_range(global);
-
-        // sync threads
-        // I don't think this is actually necessary
-        // because it's already being done by MPI_Reduce
-        // and thread 0 doesn't need to communicate with the others
-        //MPI_Barrier(MPI_COMM_WORLD);
     }
 
     MPI_Finalize();
