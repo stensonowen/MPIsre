@@ -13,6 +13,8 @@
 #include <signal.h>
 #include <unistd.h>
 
+#define UPPER_BOUND UINT_MAX
+
 int end_now = 0;
 
 typedef struct {
@@ -57,8 +59,8 @@ range next_local_tasks(range global, int id, int count) {
 range next_global_range(range old) {
     range new_global;
     new_global.lower = old.upper;
-    if (10 * (uint64_t)old.upper >= UINT_MAX) {
-        new_global.upper = UINT_MAX;
+    if (10 * (uint64_t)old.upper >= UPPER_BOUND) {
+        new_global.upper = UPPER_BOUND;
     }
 	else {
         new_global.upper = 10 * old.upper;
@@ -129,10 +131,11 @@ int main(int argc, char **argv) {
                 printf("\t\t%d\t\t%d\n", i, global_old_primes + local_num_primes);
             }
             break;
+        } else if(global.lower >= UPPER_BOUND) {
+            break;
         }
 
         global_old_primes += global_num_primes;
-		// this bound is broken. Need to determine where the last time we were sure we broke 
         if (id == 0) {
             printf("\t\t%d\t\t%d\n", global.upper, global_old_primes);
         }
