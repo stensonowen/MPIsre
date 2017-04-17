@@ -8,6 +8,7 @@
 #include <mpi.h>
 #include <math.h>
 #include <stdio.h>
+#include <limits.h>
 #include <stdint.h>
 #include <signal.h>
 #include <unistd.h>
@@ -27,9 +28,9 @@ void sig_handler(int signo) {
 
 int is_prime(uint32_t n) {
     // NOTE: it's not that efficient to run this repeatedly
-    uint32_t i, sr = (uint32_t)sqrt((double)n)+1;
-    for(i=2; i<sr; ++i) {
-        if(n % i == 0) {
+    uint32_t i, sr = (uint32_t)sqrt((double)n) + 1;
+    for (i = 2; i < sr; ++i) {
+        if ((n % i) == 0) {
             return 0;
         }
     }
@@ -48,10 +49,11 @@ range next_local_tasks(range global, int id, int count) {
 range next_global_range(range old) {
     range new_global;
     new_global.lower = old.upper;
-    if(10*(uint64_t)old.upper >= 4294967295LL) {
-        new_global.upper = 4294967295;
-    } else {
-        new_global.upper = 10*old.upper;
+    if (10 * (uint64_t)old.upper >= UINT_MAX) {
+        new_global.upper = UINT_MAX;
+    }
+	else {
+        new_global.upper = 10 * old.upper;
     }
     return new_global;
 }
@@ -60,7 +62,7 @@ int main(int argc, char **argv) {
     int count, id;
     range global = { 2, 10 };
     range local = global;
-    uint32_t i; 
+    uint32_t i;
     uint32_t local_num_primes = 0;
     uint32_t global_num_primes = 0;
 
@@ -92,7 +94,7 @@ int main(int argc, char **argv) {
         // each thread computes which numbers to check (e.g. 100-125)
         local = next_local_tasks(global, id, count);
 
-        for(i=local.lower; i<local.upper; ++i) {
+        for(i = local.lower; i < local.upper; ++i) {
             // check if each of my numbers is prime
             local_num_primes += is_prime(i);
 
@@ -100,20 +102,21 @@ int main(int argc, char **argv) {
                 // spec pretty ambiguous, so can probably just do nothing
                 // need to print output one last time though
                 // maybe need some tweaking to get this to make sense
-                if(id == 0) {
-                    printf("<Signal received>\n");
+                if (id == 0) {
+					printf("<Signal received>\n");
                     //printf("\t\t%d\t\t%d\n", i, global_num_primes);
                 }
                 break;
             }
         }
-        
+
         // communicate local counts to thread 0
         MPI_Reduce(&local_num_primes, &global_num_primes, 1, MPI_UNSIGNED, 
                 MPI_SUM, 0, MPI_COMM_WORLD);
 
-        if(id == 0) {
-            printf("\t\t%d\t\t%d\n", global.upper, global_num_primes);
+		// this bound is broken. Need to determine where the last time we were sure we broke 
+        if (id == 0) {
+            printf("\t\t%d\t\t%d\n", local.lower, global_num_primes);
         }
 
         // start on the next range of numbers (e.g. 1000-10000)
